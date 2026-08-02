@@ -1,0 +1,89 @@
+name: Build macOS App
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-mac:
+    runs-on: macos-13
+
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Installer FFmpeg et ExifTool
+        run: |
+          brew install ffmpeg exiftool || true
+
+      - name: Installer les dependances Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install PySide6 yt-dlp imageio-ffmpeg soundfile numpy
+          pip install pedalboard noisereduce demucs
+          pip install faster-whisper
+          pip install torch torchaudio
+
+      - name: Decompresser assets
+        run: |
+          if [ -f "assets.zip" ]; then
+            echo "assets.zip trouve, decompression..."
+            rm -rf assets
+            unzip -q assets.zip
+            if [ -d "assets/assets" ] && [ ! -f "assets/logo.png" ]; then
+              mv assets assets_tmp
+              mv assets_tmp/assets assets
+              rm -rf assets_tmp
+            fi
+            echo "Contenu de assets/ :"
+            ls -la assets/
+          else
+            echo "Pas de assets.zip : on suppose que le dossier assets/ est deja present."
+          fi
+
+      - name: Generer l'icone macOS
+        run: |
+          if [ -f "assets/logo.png" ] && [ ! -f "assets/logo.icns" ]; then
+            mkdir -p icon.iconset
+            sips -z 16 16     assets/logo.png --out icon.iconset/icon_16x16.png
+            sips -z 32 32     assets/logo.png --out icon.iconset/icon_16x16@2x.png
+            sips -z 32 32     assets/logo.png --out icon.iconset/icon_32x32.png
+            sips -z 64 64     assets/logo.png --out icon.iconset/icon_32x32@2x.png
+            sips -z 128 128   assets/logo.png --out icon.iconset/icon_128x128.png
+            sips -z 256 256   assets/logo.png --out icon.iconset/icon_128x128@2x.png
+            sips -z 256 256   assets/logo.png --out icon.iconset/icon_256x256.png
+            sips -z 512 512   assets/logo.png --out icon.iconset/icon_256x256@2x.png
+            sips -z 512 512   assets/logo.png --out icon.iconset/icon_512x512.png
+            sips -z 1024 1024 assets/logo.png --out icon.iconset/icon_512x512@2x.png
+            iconutil -c icns icon.iconset -o assets/logo.icns
+          fi
+
+      - name: Construire l'application
+        run: |
+          pyinstaller pimiento_mac.spec --noconfirm
+
+      - name: Creer le .dmg
+        run: |
+          mkdir -p dmg_temp
+          cp -R "dist/Pimiento Video.app" dmg_temp/
+          ln -s /Applications dmg_temp/Applications
+          hdiutil create \
+            -volname "Pimiento Video" \
+            -srcfolder dmg_temp \
+            -ov -format UDZO \
+            "dist/PimientoVideo-1.0.dmg"
+
+      - name: Publier le .dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: PimientoVideo-macOS
+          path: dist/PimientoVideo-1.0.dmg
+          retention-days: 30
