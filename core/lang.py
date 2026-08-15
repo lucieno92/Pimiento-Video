@@ -96,6 +96,7 @@ T = {
     "enc_format":       {"fr": "Codec :",            "en": "Codec:"},
     "enc_container":    {"fr": "Conteneur :",        "en": "Container:"},
     "enc_resolution":   {"fr": "Résolution :",       "en": "Resolution:"},
+    "enc_advanced":     {"fr": "Paramètres avancés", "en": "Advanced parameters"},
     "enc_framerate":    {"fr": "Frame rate :",       "en": "Frame rate:"},
     "enc_btn":          {"fr": "Encoder",            "en": "Encode"},
 

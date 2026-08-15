@@ -6,8 +6,8 @@
 ; ============================================================
 
 #define MyAppName "Pimiento Video"
-#define MyAppVersion "1.0"
-#define MyAppPublisher "Lucien Oudin"
+#define MyAppVersion "1.1"
+#define MyAppPublisher "Pimiento Video"
 #define MyAppURL "https://pimientovideo.com"
 #define MyAppExeName "Pimiento Video.exe"
 

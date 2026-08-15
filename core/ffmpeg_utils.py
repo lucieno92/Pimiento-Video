@@ -77,10 +77,32 @@ def is_ffmpeg_on_system_path():
     return shutil.which("ffmpeg") is not None
 
 
+def _assets_ffmpeg_dir():
+    """Dossier assets/ffmpeg/ embarqué dans l'app, s'il contient ffmpeg.
+    Ce dossier a l'avantage de contenir aussi ffprobe (côte à côte),
+    ce que imageio-ffmpeg ne fournit pas.
+    Utilise app_dir() pour fonctionner aussi en mode packagé (sys._MEIPASS)."""
+    try:
+        from core.paths import app_dir
+        base = app_dir()
+    except Exception:
+        base = _project_root()
+    exe = _ffmpeg_exe_name()
+    cand = os.path.join(base, "assets", "ffmpeg")
+    if os.path.isfile(os.path.join(cand, exe)):
+        return cand
+    return None
+
+
 def resolve_ffmpeg_location(manual_path=None):
     """Retourne le chemin à transmettre à yt-dlp / aux post-traitements,
     selon l'ordre de priorité décrit en haut de ce fichier.
     Retourne None si rien n'est trouvé (on retombera alors sur le PATH système)."""
+    # 1) assets/ffmpeg/ en priorite : contient ffmpeg ET ffprobe ensemble
+    assets_dir = _assets_ffmpeg_dir()
+    if assets_dir:
+        return assets_dir
+    # 2) ffmpeg embarque via imageio-ffmpeg (ffmpeg seul, sans ffprobe)
     bundled = get_bundled_ffmpeg_path()
     if bundled:
         return bundled

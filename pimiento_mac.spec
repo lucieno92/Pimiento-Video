@@ -2,29 +2,49 @@
 """
 Configuration PyInstaller pour Pimiento Video — version macOS.
 Lancer sur un Mac avec :  pyinstaller pimiento_mac.spec
-
 Produit "Pimiento Video.app" dans le dossier dist/.
 """
 
+from PyInstaller.utils.hooks import collect_all, collect_submodules
+
 block_cipher = None
+
+# Bibliotheques volumineuses qui embarquent des donnees/modeles internes :
+# collect_all recupere leur code, leurs donnees et leurs binaires.
+datas = []
+binaries = []
+hiddenimports = []
+
+for pkg in ['torch', 'torchaudio', 'demucs', 'faster_whisper',
+            'pedalboard', 'soundfile', 'reportlab', 'docx',
+            'pdf2docx', 'docx2pdf', 'deep_translator', 'aaf2',
+            'pymediainfo', 'fitz', 'pdfplumber', 'pypdf', 'openpyxl']:
+    try:
+        d, b, h = collect_all(pkg)
+        datas += d
+        binaries += b
+        hiddenimports += h
+    except Exception:
+        pass
+
+# Embarquer le dossier assets/ (logo, sons, police, exiftool, ffmpeg)
+datas += [('assets', 'assets')]
+
+# Modules importes de facon indirecte, a declarer explicitement
+hiddenimports += [
+    'PySide6.QtMultimedia',
+    'PySide6.QtMultimediaWidgets',
+    'yt_dlp',
+    'imageio_ffmpeg',
+    'numpy',
+]
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
-    datas=[
-        # Embarquer le dossier assets/ (logo, sons, police, exiftool)
-        ('assets', 'assets'),
-    ],
-    hiddenimports=[
-        'PySide6.QtMultimedia',
-        'PySide6.QtMultimediaWidgets',
-        'yt_dlp',
-        'imageio_ffmpeg',
-        'soundfile',
-        'numpy',
-        'pedalboard',
-    ],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -47,11 +67,11 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,              # UPX est deconseille sur macOS
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
-    argv_emulation=True,    # permet d'ouvrir un fichier en le glissant sur l'app
-    target_arch=None,       # None = architecture de la machine qui compile
+    argv_emulation=True,
+    target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
 )
@@ -67,24 +87,21 @@ coll = COLLECT(
     name='Pimiento Video',
 )
 
-# Etape specifique macOS : emballer le tout dans un vrai .app
 app = BUNDLE(
     coll,
     name='Pimiento Video.app',
-    icon='assets/logo.icns',      # icone macOS (a generer, voir le guide)
+    icon='assets/logo.icns',
     bundle_identifier='com.pimientovideo.app',
     info_plist={
         'CFBundleName': 'Pimiento Video',
         'CFBundleDisplayName': 'Pimiento Video',
-        'CFBundleShortVersionString': '1.0',
-        'CFBundleVersion': '1.0',
+        'CFBundleShortVersionString': '1.1',
+        'CFBundleVersion': '1.1',
         'NSHighResolutionCapable': True,
-        # Autorisations demandees a l'utilisateur si besoin
         'NSMicrophoneUsageDescription':
             'Pimiento Video needs microphone access for voice recording features.',
         'NSAppleEventsUsageDescription':
             'Pimiento Video uses system events to process your media files.',
-        # Types de fichiers que l'app declare savoir ouvrir
         'CFBundleDocumentTypes': [
             {
                 'CFBundleTypeName': 'Video File',

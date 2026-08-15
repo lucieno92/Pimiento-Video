@@ -453,10 +453,16 @@ class DownloaderPage(QWidget):
             "  border: 2px solid #e8542e;"
             "  border-radius: 8px;"
             "  padding: 10px;"
-            "  color: #666666;"
+            "  color: #e8eaf0;"          # texte tapé bien lisible (clair)
             "}"
             "QTextEdit:focus { border: 2px solid #ff6b45; }"
         )
+        # Le placeholder est atténué par Qt (~50 %) : on le règle sur une
+        # couleur claire pour qu'il reste parfaitement lisible une fois atténué.
+        from PySide6.QtGui import QPalette, QColor
+        _pal = self.url_input.palette()
+        _pal.setColor(QPalette.PlaceholderText, QColor("#b9c0d0"))
+        self.url_input.setPalette(_pal)
         layout.addWidget(self.url_input)
 
         self.playlist_checkbox = QCheckBox("Download full playlist (if playlist URL)")

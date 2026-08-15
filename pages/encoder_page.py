@@ -196,6 +196,191 @@ FORMAT_CONTAINERS = {
 CATEGORIES_NO_RESOLUTION = {"Audio conversion"}
 CATEGORIES_NO_FRAMERATE = {"Audio conversion", "Image / sequence"}
 
+# ──────────────────────────────────────────────────────────────────────────
+#  PARAMÈTRES AVANCÉS PAR FORMAT
+#  Chaque paramètre a été testé avec FFmpeg : il produit un vrai fichier
+#  valide. Les menus déroulants correspondants n'apparaissent que pour les
+#  formats concernés. La 1re option de chaque menu est la valeur par défaut
+#  (celle du preset) et n'ajoute rien à la commande.
+#
+#  Structure d'un paramètre :
+#    {
+#      "label": texte affiché,
+#      "flag":  option FFmpeg (ex "-b:v"), ou None pour un paramètre spécial,
+#      "options": [(texte affiché, valeur ajoutée à la commande), ...],
+#      "kind": "video" ou "audio" (pour placer le menu au bon endroit),
+#    }
+#  Une valeur None dans une option = ne rien ajouter (garder le défaut).
+# ──────────────────────────────────────────────────────────────────────────
+
+# Choix de débit vidéo réutilisable (codecs à bitrate cible)
+_VBITRATE_OPTS = [
+    ("Default quality", None),
+    ("Low (2 Mb/s)", "2M"),
+    ("Medium (5 Mb/s)", "5M"),
+    ("High (10 Mb/s)", "10M"),
+    ("Very high (20 Mb/s)", "20M"),
+    ("Maximum (50 Mb/s)", "50M"),
+]
+
+# Qualité pour x264/x265, présentée en langage clair (pas de jargon CRF).
+# Plus la qualité est haute, plus le fichier est gros.
+_CRF_OPTS_264 = [
+    ("Default", None),
+    ("Maximum (near lossless)", "16"),
+    ("High", "20"),
+    ("Medium", "23"),
+    ("Low (smaller file)", "28"),
+]
+_CRF_OPTS_265 = [
+    ("Default", None),
+    ("Maximum (near lossless)", "18"),
+    ("High", "22"),
+    ("Medium", "25"),
+    ("Low (smaller file)", "30"),
+]
+
+# Débit vidéo cible pour H.264/H.265 (mode alternatif à la qualité).
+# "custom" rend le menu éditable pour taper sa propre valeur (ex: 20M).
+_VBITRATE_H26X = [
+    ("Use quality setting", None),
+    ("2 Mb/s", "2M"),
+    ("5 Mb/s", "5M"),
+    ("10 Mb/s", "10M"),
+    ("20 Mb/s", "20M"),
+    ("50 Mb/s", "50M"),
+    ("Custom…", "custom"),
+]
+
+# Profondeur de couleur (pixel format)
+_DEPTH_8_10 = [
+    ("8-bit (standard)", None),
+    ("10-bit", "yuv420p10le"),
+]
+
+# Vitesse d'encodage : compromis temps de calcul / taille de fichier.
+# N'affecte PAS la qualité visuelle, seulement la durée et le poids.
+_SPEED_OPTS = [
+    ("Default", None),
+    ("Fast (larger file)", "fast"),
+    ("Faster", "faster"),
+    ("Slow (smaller file)", "slow"),
+    ("Slower (smallest file)", "slower"),
+]
+
+# Débit audio
+_ABITRATE_OPTS = [
+    ("Default", None),
+    ("128 kb/s", "128k"),
+    ("192 kb/s", "192k"),
+    ("256 kb/s", "256k"),
+    ("320 kb/s", "320k"),
+]
+
+# Fréquence d'échantillonnage audio
+_ASAMPLE_OPTS = [
+    ("Keep original", None),
+    ("44.1 kHz", "44100"),
+    ("48 kHz", "48000"),
+    ("96 kHz", "96000"),
+]
+
+# Canaux audio
+_ACHANNELS_OPTS = [
+    ("Keep original", None),
+    ("Mono", "1"),
+    ("Stereo", "2"),
+]
+
+# Profondeur pour images fixes / séquences (quand applicable)
+_IMG_DEPTH_PNG = [
+    ("8-bit", None),
+    ("16-bit", "rgb48be"),
+]
+
+# Table : pour chaque format, la liste des paramètres avancés disponibles.
+# Les formats absents de cette table n'ont pas de paramètre avancé.
+ADVANCED_PARAMS = {
+    # ── H.264 / H.265 : qualité, débit, profondeur, vitesse ──
+    "H.264 (MP4)": [
+        {"label": "Quality", "flag": "-crf", "kind": "video", "options": _CRF_OPTS_264},
+        {"label": "Target bitrate", "flag": "-b:v", "kind": "video", "options": _VBITRATE_H26X, "allow_custom": True},
+        {"label": "Color depth", "flag": "-pix_fmt", "kind": "video", "options": _DEPTH_8_10},
+        {"label": "Encoding speed", "flag": "-preset", "kind": "video", "options": _SPEED_OPTS},
+        {"label": "Audio bitrate", "flag": "-b:a", "kind": "audio", "options": _ABITRATE_OPTS},
+        {"label": "Sample rate", "flag": "-ar", "kind": "audio", "options": _ASAMPLE_OPTS},
+        {"label": "Channels", "flag": "-ac", "kind": "audio", "options": _ACHANNELS_OPTS},
+    ],
+    "H.265 / HEVC (MP4)": [
+        {"label": "Quality", "flag": "-crf", "kind": "video", "options": _CRF_OPTS_265},
+        {"label": "Target bitrate", "flag": "-b:v", "kind": "video", "options": _VBITRATE_H26X, "allow_custom": True},
+        {"label": "Color depth", "flag": "-pix_fmt", "kind": "video", "options": _DEPTH_8_10},
+        {"label": "Encoding speed", "flag": "-preset", "kind": "video", "options": _SPEED_OPTS},
+        {"label": "Audio bitrate", "flag": "-b:a", "kind": "audio", "options": _ABITRATE_OPTS},
+        {"label": "Sample rate", "flag": "-ar", "kind": "audio", "options": _ASAMPLE_OPTS},
+        {"label": "Channels", "flag": "-ac", "kind": "audio", "options": _ACHANNELS_OPTS},
+    ],
+    # ── VP9 / AV1 : qualité + audio ──
+    "VP9 (WebM)": [
+        {"label": "Quality (CRF)", "flag": "-crf", "kind": "video",
+         "options": [("Default (CRF 32)", None), ("High (CRF 24)", "24"),
+                     ("Balanced (CRF 32)", "32"), ("Smaller (CRF 40)", "40")]},
+    ],
+    "AV1 (MP4)": [
+        {"label": "Quality (CRF)", "flag": "-crf", "kind": "video",
+         "options": [("Default (CRF 30)", None), ("High (CRF 24)", "24"),
+                     ("Balanced (CRF 30)", "30"), ("Smaller (CRF 40)", "40")]},
+    ],
+    # ── Codecs à débit cible : choix du débit vidéo ──
+    "MPEG-2": [
+        {"label": "Video bitrate", "flag": "-b:v", "kind": "video",
+         "options": [("Default (8 Mb/s)", None), ("5 Mb/s", "5M"),
+                     ("8 Mb/s", "8M"), ("15 Mb/s", "15M"), ("25 Mb/s", "25M")]},
+        {"label": "Audio bitrate", "flag": "-b:a", "kind": "audio", "options": _ABITRATE_OPTS},
+    ],
+    "WMV": [
+        {"label": "Video bitrate", "flag": "-b:v", "kind": "video", "options": _VBITRATE_OPTS},
+    ],
+    # ── Audio purs : débit, échantillonnage, canaux ──
+    "MP3": [
+        {"label": "Bitrate", "flag": "-b:a", "kind": "audio",
+         "options": [("Default (192)", None), ("128 kb/s", "128k"),
+                     ("192 kb/s", "192k"), ("256 kb/s", "256k"), ("320 kb/s", "320k")]},
+        {"label": "Sample rate", "flag": "-ar", "kind": "audio", "options": _ASAMPLE_OPTS},
+        {"label": "Channels", "flag": "-ac", "kind": "audio", "options": _ACHANNELS_OPTS},
+    ],
+    "AAC / M4A": [
+        {"label": "Bitrate", "flag": "-b:a", "kind": "audio", "options": _ABITRATE_OPTS},
+        {"label": "Sample rate", "flag": "-ar", "kind": "audio", "options": _ASAMPLE_OPTS},
+        {"label": "Channels", "flag": "-ac", "kind": "audio", "options": _ACHANNELS_OPTS},
+    ],
+    "Opus": [
+        {"label": "Bitrate", "flag": "-b:a", "kind": "audio", "options": _ABITRATE_OPTS},
+        {"label": "Channels", "flag": "-ac", "kind": "audio", "options": _ACHANNELS_OPTS},
+    ],
+    "FLAC": [
+        {"label": "Sample rate", "flag": "-ar", "kind": "audio", "options": _ASAMPLE_OPTS},
+        {"label": "Channels", "flag": "-ac", "kind": "audio", "options": _ACHANNELS_OPTS},
+    ],
+    "WAV": [
+        {"label": "Sample rate", "flag": "-ar", "kind": "audio", "options": _ASAMPLE_OPTS},
+        {"label": "Channels", "flag": "-ac", "kind": "audio", "options": _ACHANNELS_OPTS},
+        {"label": "Bit depth", "flag": "-c:a", "kind": "audio",
+         "options": [("16-bit", None), ("24-bit", "pcm_s24le"), ("32-bit float", "pcm_f32le")]},
+    ],
+    # ── Images : profondeur / qualité ──
+    "PNG": [
+        {"label": "Color depth", "flag": "-pix_fmt", "kind": "video", "options": _IMG_DEPTH_PNG},
+    ],
+    "JPEG": [
+        {"label": "Quality", "flag": "-q:v", "kind": "video",
+         "options": [("High (2)", None), ("Maximum (1)", "1"),
+                     ("Medium (5)", "5"), ("Low (10)", "10")]},
+    ],
+}
+
+# Catégories où la résolution / le frame rate ne s'appliquent pas (suite).
+
 # Catégories où le conteneur de sortie peut être choisi librement.
 CATEGORIES_WITH_CONTAINER_CHOICE = {
     "Editing codecs", "Output codecs", "Broadcast codecs",
@@ -206,17 +391,27 @@ _TIME_PATTERN = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
 
 
 def _get_duration_seconds(path):
-    """Durée du fichier en secondes, via pymediainfo. None si indisponible
+    """Durée du fichier en secondes. Utilise pymediainfo si disponible, sinon
+    ffprobe/ffmpeg (déjà embarqué) — indispensable sur macOS où pymediainfo
+    n'est pas fonctionnel. None si la durée ne peut pas être déterminée
     (normal pour une simple photo, par exemple)."""
-    if MediaInfo is None:
-        return None
+    # 1) pymediainfo si présent et fonctionnel
+    if MediaInfo is not None:
+        try:
+            info = MediaInfo.parse(path)
+            for track in info.tracks:
+                if track.track_type == "General":
+                    duration_ms = getattr(track, "duration", None)
+                    if duration_ms not in (None, ""):
+                        return float(duration_ms) / 1000
+        except Exception:
+            pass
+    # 2) Secours : ffprobe/ffmpeg (toujours disponible dans l'app)
     try:
-        info = MediaInfo.parse(path)
-        for track in info.tracks:
-            if track.track_type == "General":
-                duration_ms = getattr(track, "duration", None)
-                if duration_ms not in (None, ""):
-                    return float(duration_ms) / 1000
+        from core.ffprobe_reader import read_metadata
+        meta = read_metadata(path)
+        if meta and meta.get("general", {}).get("duration_s") is not None:
+            return float(meta["general"]["duration_s"])
     except Exception:
         pass
     return None
@@ -370,6 +565,46 @@ class PreviewPanel(QWidget):
         self.audio_output.setVolume(value / 100)
 
 
+def _apply_overrides(base_args, overrides):
+    """Applique une liste d'arguments FFmpeg (overrides) sur des arguments de
+    base, en REMPLAÇANT tout flag déjà présent plutôt qu'en le dupliquant.
+
+    Exemple : base = [-c:v, libx264, -crf, 18], override = [-crf, 23]
+              => [-c:v, libx264, -crf, 23]
+
+    Cas spécial -pix_fmt et -c:a : un override de codec/pixfmt remplace la
+    valeur existante. Les flags overrides absents de la base sont ajoutés.
+    """
+    if not overrides:
+        return list(base_args)
+
+    result = list(base_args)
+
+    # Si on ajoute un débit vidéo (-b:v), retirer un éventuel -crf du preset
+    # de base : les deux ensemble n'ont pas de sens pour x264/x265.
+    if "-b:v" in overrides and "-crf" in result:
+        j = result.index("-crf")
+        del result[j:j + 2]
+
+    # Parcourir les overrides par paires (flag, valeur)
+    i = 0
+    while i < len(overrides) - 1:
+        flag = overrides[i]
+        value = overrides[i + 1]
+        # Chercher si ce flag existe déjà dans result
+        replaced = False
+        for j in range(len(result) - 1):
+            if result[j] == flag:
+                result[j + 1] = value
+                replaced = True
+                break
+        if not replaced:
+            result += [flag, value]
+        i += 2
+
+    return result
+
+
 class EncodeWorker(QThread):
     """Lance ffmpeg pour chaque fichier de la file, dans un thread séparé."""
 
@@ -381,7 +616,8 @@ class EncodeWorker(QThread):
     def __init__(self, files, output_dir, category, preset_name,
                  resolution, frame_rate, container_override=None,
                  prefix="", suffix="", folder_per_video=False,
-                 delete_source=False, parent=None):
+                 delete_source=False, advanced_video=None,
+                 advanced_audio=None, parent=None):
         super().__init__(parent)
         self.files = files
         self.output_dir = output_dir
@@ -394,6 +630,8 @@ class EncodeWorker(QThread):
         self.suffix = suffix
         self.folder_per_video = folder_per_video
         self.delete_source = delete_source
+        self.advanced_video = advanced_video or []   # args ffmpeg vidéo avancés
+        self.advanced_audio = advanced_audio or []   # args ffmpeg audio avancés
         self._stop_requested = False
         self._current_process = None
 
@@ -426,7 +664,10 @@ class EncodeWorker(QThread):
         if preset.get("vcodec") is None:
             args += ["-vn"]
         else:
-            args += preset["vcodec"]
+            # Partir des args vidéo du preset, puis appliquer les réglages
+            # avancés choisis par l'utilisateur (qui remplacent les défauts).
+            vcodec_args = _apply_overrides(list(preset["vcodec"]), self.advanced_video)
+            args += vcodec_args
 
         if self.frame_rate and (apply_filters or preset.get("image_sequence")):
             args += ["-r", str(self.frame_rate)]
@@ -452,6 +693,8 @@ class EncodeWorker(QThread):
                     acodec = ["-c:a", "libvorbis"]
                 elif out_ext == "wmv":
                     acodec = ["-c:a", "wmav2", "-b:a", "192k"]
+            # Appliquer les réglages audio avancés (remplacent les défauts)
+            acodec = _apply_overrides(acodec, self.advanced_audio)
             args += acodec
             # Le conteneur MXF n'accepte QUE de l'audio 48 kHz, sinon FFmpeg
             # échoue avec "only 48khz is implemented".
@@ -585,7 +828,7 @@ class EncoderPage(QWidget):
         self.splitter = QSplitter(Qt.Horizontal)
 
         left_widget = QWidget()
-        left_widget.setMinimumWidth(300)
+        left_widget.setMinimumWidth(380)
         layout = QVBoxLayout(left_widget)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -652,6 +895,18 @@ class EncoderPage(QWidget):
         options_layout.addLayout(fps_box)
 
         layout.addWidget(options_group)
+
+        # ── Paramètres avancés (menus déroulants dynamiques selon le codec) ──
+        from PySide6.QtWidgets import QGridLayout
+        self.advanced_group = TGroupBox("enc_advanced")
+        self.advanced_layout = QGridLayout(self.advanced_group)
+        self.advanced_layout.setContentsMargins(12, 12, 12, 12)
+        self.advanced_layout.setHorizontalSpacing(16)
+        self.advanced_layout.setVerticalSpacing(12)
+        # Les menus avancés sont recréés à chaque changement de format.
+        self._advanced_combos = []   # liste de (param_dict, QComboBox)
+        layout.addWidget(self.advanced_group)
+
         self._on_format_changed()
 
         rename_group = TGroupBox("rename_section")
@@ -798,6 +1053,129 @@ class EncoderPage(QWidget):
         self.res_combo.setEnabled(category not in CATEGORIES_NO_RESOLUTION)
         self.fps_combo.setEnabled(category not in CATEGORIES_NO_FRAMERATE)
         self._sync_container_default()
+        self._rebuild_advanced_params()
+
+    def _rebuild_advanced_params(self):
+        """Reconstruit les menus déroulants de paramètres avancés selon le
+        format sélectionné. Chaque menu correspond à une option FFmpeg réelle
+        (table ADVANCED_PARAMS). Si le format n'a pas de paramètre avancé,
+        la zone est masquée."""
+        # Vider les anciens menus
+        while self.advanced_layout.count():
+            item = self.advanced_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        self._advanced_combos = []
+
+        sel = self._current_category_and_format()
+        if sel is None:
+            self.advanced_group.setVisible(False)
+            return
+        _, preset_name = sel
+        params = ADVANCED_PARAMS.get(preset_name)
+        if not params:
+            self.advanced_group.setVisible(False)
+            return
+
+        from PySide6.QtWidgets import QLabel as _QLabel, QComboBox as _QComboBox
+        # Disposer les menus sur DEUX colonnes pour gagner de la hauteur.
+        # Grille : colonnes 0-1 = 1re colonne (label, menu),
+        #          colonnes 2-3 = 2e colonne (label, menu).
+        n = len(params)
+        half = (n + 1) // 2   # 1re colonne reçoit la moitié (arrondi au-dessus)
+        for i, param in enumerate(params):
+            if i < half:
+                grid_row = i
+                col_label, col_combo = 0, 1
+            else:
+                grid_row = i - half
+                col_label, col_combo = 2, 3
+
+            lbl = _QLabel(param["label"] + " :")
+            lbl.setStyleSheet("border: none; color: #cdd2e0;")
+            lbl.setMinimumHeight(28)
+            combo = _QComboBox()
+            combo.setMinimumHeight(28)
+            combo.setMinimumWidth(150)
+            for opt_text, _opt_val in param["options"]:
+                combo.addItem(opt_text)
+            combo.setCurrentIndex(0)  # 1re option = valeur par défaut
+            if param.get("allow_custom"):
+                combo.currentIndexChanged.connect(
+                    lambda _idx, c=combo, p=param: self._on_custom_check(c, p)
+                )
+            self.advanced_layout.addWidget(lbl, grid_row, col_label)
+            self.advanced_layout.addWidget(combo, grid_row, col_combo)
+            self._advanced_combos.append((param, combo))
+
+        # Espace entre les deux colonnes
+        self.advanced_layout.setColumnMinimumWidth(1, 150)
+        self.advanced_layout.setColumnMinimumWidth(3, 150)
+        self.advanced_group.setVisible(True)
+
+    def _on_custom_check(self, combo, param):
+        """Rend le menu éditable si l'utilisateur choisit 'Custom…', pour taper
+        une valeur libre (ex: 20M ou 30000k)."""
+        idx = combo.currentIndex()
+        if idx < 0 or idx >= len(param["options"]):
+            return
+        _text, value = param["options"][idx]
+        if value == "custom":
+            combo.setEditable(True)
+            combo.setCurrentText("")
+            combo.setFocus()
+            if combo.lineEdit():
+                combo.lineEdit().setPlaceholderText("e.g. 20M or 30000k")
+        elif combo.isEditable():
+            combo.setEditable(False)
+
+    def _collect_advanced_args(self):
+        """Construit les arguments FFmpeg à partir des menus avancés. Gère les
+        valeurs libres (Custom) et le conflit qualité (CRF) / débit (bitrate) :
+        si un débit cible est choisi, la qualité CRF est ignorée."""
+        video_args = []
+        audio_args = []
+        target_bitrate_set = False
+
+        # Détecter d'abord si un débit vidéo cible a été choisi
+        for param, combo in self._advanced_combos:
+            if param["flag"] == "-b:v":
+                if combo.isEditable():
+                    txt = combo.currentText().strip()
+                    if txt and txt.lower() != "custom…":
+                        target_bitrate_set = True
+                else:
+                    idx = combo.currentIndex()
+                    if 0 <= idx < len(param["options"]):
+                        _t, v = param["options"][idx]
+                        if v not in (None, "custom"):
+                            target_bitrate_set = True
+
+        for param, combo in self._advanced_combos:
+            flag = param["flag"]
+            if combo.isEditable():
+                value = combo.currentText().strip()
+                if not value or value.lower() == "custom…":
+                    continue
+            else:
+                idx = combo.currentIndex()
+                if idx <= 0 or idx >= len(param["options"]):
+                    continue
+                _text, value = param["options"][idx]
+                if value is None or value == "custom":
+                    continue
+
+            # Conflit : un débit cible désactive le CRF
+            if flag == "-crf" and target_bitrate_set:
+                continue
+
+            args = [flag, value]
+            if param["kind"] == "audio":
+                audio_args += args
+            else:
+                video_args += args
+        return video_args, audio_args
 
     def _sync_container_default(self):
         """Ne propose que les conteneurs RÉELLEMENT compatibles avec le format
@@ -858,9 +1236,9 @@ class EncoderPage(QWidget):
             self._preview_shown = True
             window = self.window()
             if window is not None:
-                window.resize(window.width() + 500, window.height())
+                window.resize(window.width() + 320, window.height())
         total = max(self.splitter.width(), 1000)
-        self.splitter.setSizes([int(total * 0.25), int(total * 0.75)])
+        self.splitter.setSizes([int(total * 0.52), int(total * 0.48)])
 
     def _on_queue_selection_changed(self, row):
         if 0 <= row < len(self.queued_files):
@@ -960,6 +1338,9 @@ class EncoderPage(QWidget):
             self.container_combo.currentText() if self.container_combo.isEnabled() else None
         )
 
+        # Récupérer les réglages avancés choisis (menus déroulants dynamiques)
+        advanced_video, advanced_audio = self._collect_advanced_args()
+
         self.encode_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.log_output.clear()
@@ -977,6 +1358,8 @@ class EncoderPage(QWidget):
             suffix=self.suffix_input.text(),
             folder_per_video=self.folder_per_video_check.isChecked(),
             delete_source=self.delete_source_check.isChecked(),
+            advanced_video=advanced_video,
+            advanced_audio=advanced_audio,
         )
         self.worker.log_message.connect(self._append_log)
         self.worker.progress_value.connect(self.progress_bar.setValue)
@@ -1015,3 +1398,4 @@ class EncoderPage(QWidget):
         if hasattr(self, '_t_back'):      self._t_back.setText(tr("back"))
         if hasattr(self, '_t_enc_btn'):   self._t_enc_btn.setText(tr("enc_btn"))
         if hasattr(self, '_t_cancel_btn'):self._t_cancel_btn.setText(tr("cancel"))
+

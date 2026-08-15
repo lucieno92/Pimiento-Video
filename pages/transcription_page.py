@@ -74,15 +74,23 @@ _TC_PREFIX_PATTERN = re.compile(r"^\[\d{2}:\d{2}\]\s*")
 
 
 def _get_duration_seconds(path):
-    if MediaInfo is None:
-        return None
+    # 1) pymediainfo si disponible
+    if MediaInfo is not None:
+        try:
+            info = MediaInfo.parse(path)
+            for track in info.tracks:
+                if track.track_type == "General":
+                    duration_ms = getattr(track, "duration", None)
+                    if duration_ms not in (None, ""):
+                        return float(duration_ms) / 1000
+        except Exception:
+            pass
+    # 2) Secours ffprobe (indispensable sur macOS sans pymediainfo)
     try:
-        info = MediaInfo.parse(path)
-        for track in info.tracks:
-            if track.track_type == "General":
-                duration_ms = getattr(track, "duration", None)
-                if duration_ms not in (None, ""):
-                    return float(duration_ms) / 1000
+        from core.ffprobe_reader import read_metadata
+        meta = read_metadata(path)
+        if meta and meta.get("general", {}).get("duration_s") is not None:
+            return float(meta["general"]["duration_s"])
     except Exception:
         pass
     return None
@@ -378,8 +386,8 @@ class TranscriptionPage(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        left_scroll.setMinimumWidth(320)
-        left_scroll.setMaximumWidth(380)
+        left_scroll.setMinimumWidth(380)
+        left_scroll.setMaximumWidth(440)
         left_scroll.setFrameShape(QFrame.NoFrame)
 
         left_widget = QWidget()
@@ -543,7 +551,7 @@ class TranscriptionPage(QWidget):
         main_hsplit.addWidget(right_vsplit)
         main_hsplit.setStretchFactor(0, 0)
         main_hsplit.setStretchFactor(1, 1)
-        main_hsplit.setSizes([340, 760])
+        main_hsplit.setSizes([400, 700])
         outer.addWidget(main_hsplit, stretch=1)
 
         self.player = QMediaPlayer(self)
@@ -928,3 +936,4 @@ class TranscriptionPage(QWidget):
         if hasattr(self, '_t_back'):      self._t_back.setText(tr("back"))
         if hasattr(self, '_t_tr_btn'):    self._t_tr_btn.setText(tr("tr_btn"))
         if hasattr(self, '_t_cancel'):    self._t_cancel.setText(tr("cancel"))
+

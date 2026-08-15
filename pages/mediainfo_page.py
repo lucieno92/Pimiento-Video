@@ -298,16 +298,17 @@ class MediaInfoPage(QWidget):
             pass  # si ExifTool absent/échoue, on retombe sur MediaInfo
 
         if MediaInfo is None:
-            self._add_section_text(
-                "Error",
-                "Le paquet 'pymediainfo' n'is not installed.\n"
-                "Lance : pip install -r requirements.txt"
-            )
+            # pymediainfo indisponible (ex: macOS) : on lit via ffprobe/ffmpeg,
+            # déjà embarqué dans l'application. Même information à l'écran.
+            self._load_file_via_ffprobe(path)
             return
 
         try:
             media_info = MediaInfo.parse(path)
         except Exception as e:
+            # MediaInfo présent mais échoue : dernier recours ffprobe.
+            if self._load_file_via_ffprobe(path):
+                return
             self._add_section_text("Error", f"Impossible d'analyser ce fichier :\n{e}")
             return
 
@@ -328,6 +329,111 @@ class MediaInfoPage(QWidget):
             self._add_camera_section(other_data)
 
         self.raw_output.setPlainText(self._format_raw(media_info))
+
+    def _load_file_via_ffprobe(self, path):
+        """Affiche les métadonnées via ffprobe/ffmpeg (source de secours
+        quand pymediainfo est absent). Retourne True si des infos ont pu
+        être affichées, False sinon."""
+        try:
+            from core.ffprobe_reader import read_metadata
+            meta = read_metadata(path)
+        except Exception:
+            meta = None
+
+        if not meta:
+            self._add_section_text(
+                "Error",
+                "Impossible d'analyser ce fichier.\n"
+                "Verifiez que FFmpeg est bien disponible."
+            )
+            return False
+
+        # ── Section General ──
+        g = meta.get("general", {})
+        box = QGroupBox("General")
+        form = QFormLayout(box)
+        if self._current_filename:
+            form.addRow("Nom du fichier :", QLabel(self._current_filename))
+        if g.get("format"):
+            form.addRow("Conteneur :", QLabel(str(g["format"])))
+        if g.get("size_bytes"):
+            form.addRow("Taille du fichier :", QLabel(format_file_size(g["size_bytes"])))
+        if g.get("duration_s") is not None:
+            form.addRow("Duration:", QLabel(format_duration(g["duration_s"] * 1000)))
+        # Nombre d'images : depuis la vidéo si dispo, sinon calculé
+        vids = meta.get("video", [])
+        nb = None
+        if vids:
+            nb = vids[0].get("nb_frames")
+            if not nb and vids[0].get("frame_rate") and g.get("duration_s"):
+                nb = int(round(vids[0]["frame_rate"] * g["duration_s"]))
+                self._frame_count_is_computed = True
+        if nb:
+            lbl = "Frame count (calculated)" if self._frame_count_is_computed else "Nombre d'images"
+            form.addRow(f"{lbl} :", QLabel(str(nb)))
+        if g.get("bit_rate"):
+            form.addRow("Bitrate:", QLabel(format_bit_rate(g["bit_rate"])))
+        # Date d'encodage depuis les tags si présente
+        tags = g.get("tags", {}) or {}
+        enc_date = tags.get("creation_time") or tags.get("date")
+        if enc_date:
+            form.addRow("Date d'encodage :", QLabel(str(enc_date)))
+        # Caméra : ExifTool prioritaire, sinon tag
+        cam = self._exif_camera or tags.get("com.apple.quicktime.make") or tags.get("make")
+        if cam:
+            form.addRow("Camera:", QLabel(str(cam)))
+        self.results_layout.addWidget(box)
+
+        # ── Sections Vidéo ──
+        for v in vids:
+            box = QGroupBox("Video track")
+            form = QFormLayout(box)
+            if v.get("codec"):
+                form.addRow("Codec :", QLabel(str(v["codec"])))
+            if v.get("width") and v.get("height"):
+                form.addRow("Resolution:", QLabel(f"{v['width']} x {v['height']}"))
+            if v.get("frame_rate"):
+                form.addRow("Frame rate :", QLabel(f"{v['frame_rate']} fps"))
+            if v.get("bit_rate"):
+                form.addRow("Bitrate:", QLabel(format_bit_rate(v["bit_rate"])))
+            if v.get("pix_fmt"):
+                form.addRow("Pixel format :", QLabel(str(v["pix_fmt"])))
+            if v.get("color_space"):
+                form.addRow("Color space :", QLabel(str(v["color_space"])))
+            if v.get("color_transfer"):
+                form.addRow("Transfer :", QLabel(str(v["color_transfer"])))
+            if v.get("profile"):
+                form.addRow("Profil :", QLabel(str(v["profile"])))
+            # Profil LOG : ExifTool prioritaire
+            log_text = self._exif_log if self._exif_log else "Not detected"
+            form.addRow("Profil LOG :", QLabel(log_text))
+            self.results_layout.addWidget(box)
+
+        # ── Sections Audio ──
+        for a in meta.get("audio", []):
+            box = QGroupBox("Piste audio")
+            form = QFormLayout(box)
+            if a.get("codec"):
+                form.addRow("Codec :", QLabel(str(a["codec"])))
+            if a.get("sample_rate"):
+                form.addRow("Sample rate :", QLabel(f"{a['sample_rate']} Hz"))
+            if a.get("channels"):
+                form.addRow("Channels :", QLabel(str(a["channels"])))
+            if a.get("channel_layout"):
+                form.addRow("Layout :", QLabel(str(a["channel_layout"])))
+            if a.get("bit_rate"):
+                form.addRow("Bitrate:", QLabel(format_bit_rate(a["bit_rate"])))
+            self.results_layout.addWidget(box)
+
+        # ── Sections Texte / Sous-titres ──
+        for t in meta.get("text", []):
+            box = QGroupBox("Sous-titres / Texte")
+            form = QFormLayout(box)
+            if t.get("codec"):
+                form.addRow("Codec :", QLabel(str(t["codec"])))
+            self.results_layout.addWidget(box)
+
+        return True
 
     def _clear_results(self):
         while self.results_layout.count():
@@ -543,3 +649,4 @@ class MediaInfoPage(QWidget):
         LangManager.get().current = lang
         if hasattr(self, '_t_title'):  self._t_title.setText(tr("mi_title"))
         if hasattr(self, '_t_back'):   self._t_back.setText(tr("back"))
+

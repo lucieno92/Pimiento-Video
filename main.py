@@ -216,7 +216,7 @@ class SplashScreen(QWidget):
         layout.addWidget(self._progress)
         layout.addSpacing(12)
 
-        version = QLabel("v1.0")
+        version = QLabel(f"v{CURRENT_VERSION}")
         version.setAlignment(Qt.AlignCenter)
         version.setStyleSheet(
             "color:#ffffff; font-size:12px; font-weight:600; "
@@ -325,7 +325,7 @@ class Sidebar(QWidget):
             lambda: self._callbacks.get("support", lambda: None)())
         bottom_layout.addWidget(self._support_btn)
 
-        version_lbl = QLabel("Pimiento Video · v1.0")
+        version_lbl = QLabel(f"Pimiento Video · v{CURRENT_VERSION}")
         version_lbl.setStyleSheet(
             "color:#2a2d3e; font-size:9px; font-family:'Segoe UI',Arial;"
             "background:transparent; padding: 2px 14px;"
@@ -390,8 +390,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Pimiento Video")
         if os.path.exists(LOGO_PATH):
             self.setWindowIcon(QIcon(LOGO_PATH))
-        self.setMinimumSize(1100, 700)
-        self.resize(1280, 800)
+        self.setMinimumSize(1200, 780)
+        self.resize(1440, 900)
         self._build_ui()
 
     def _build_ui(self):
@@ -490,9 +490,22 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl(KOFI_URL))
 
     def closeEvent(self, event):
-        """À la fermeture : proposer un don (sauf si déjà donné)."""
+        """À la fermeture : proposer un don (sauf si déjà donné), puis
+        arrêter proprement le thread de vérification des mises à jour.
+        Sans cet arrêt propre, macOS signale un crash à chaque fermeture."""
         dlg = DonationDialog(self)
         dlg.exec()
+
+        # Arrêter le thread de mise à jour s'il tourne encore.
+        thread = getattr(self, "_update_thread", None)
+        if thread is not None:
+            try:
+                if thread.isRunning():
+                    thread.quit()
+                    thread.wait(3000)  # attendre max 3 s qu'il se termine
+            except RuntimeError:
+                pass  # thread déjà supprimé, rien à faire
+
         event.accept()
 
 
@@ -521,6 +534,9 @@ def _check_updates_async(window):
     checker.moveToThread(thread)
     checker.found.connect(show_update)
     thread.started.connect(checker.run)
+    # Quand la vérification est finie, arrêter le thread proprement.
+    checker.found.connect(thread.quit)
+    thread.finished.connect(checker.deleteLater)
     thread.start()
 
     # Garder les références pour éviter le garbage collection
