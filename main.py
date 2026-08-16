@@ -512,11 +512,24 @@ class MainWindow(QMainWindow):
 # ── Entrée ────────────────────────────────────────────────────────────────────
 
 def _check_updates_async(window):
-    """Vérifie les mises à jour dans un thread séparé, puis affiche le
-    pop-up sur le thread principal si une nouvelle version existe."""
-    from PySide6.QtCore import QThread, Signal, QObject
+    """Vérifie les mises à jour sans bloquer le démarrage, et affiche le
+    pop-up sur le thread principal. Le dialogue DOIT être créé sur le thread
+    principal (celui de l'interface), sinon Qt plante (segfault / fond blanc).
+    """
+    from PySide6.QtCore import QThread, Signal, QObject, Qt as _Qt
 
-    class _UpdateChecker(QObject):
+    # Ce récepteur VIT sur le thread principal (il est créé ici, dans main()).
+    # Son slot _on_found sera donc exécuté sur le thread principal grâce à la
+    # connexion Queued, ce qui rend la création du dialogue sûre.
+    class _UpdateReceiver(QObject):
+        def _on_found(self, info):
+            try:
+                dlg = UpdateDialog(CURRENT_VERSION, info, window)
+                dlg.exec()
+            except Exception:
+                pass
+
+    class _UpdateWorker(QObject):
         found = Signal(dict)
 
         def run(self):
@@ -524,24 +537,23 @@ def _check_updates_async(window):
             if info:
                 self.found.emit(info)
 
-    def show_update(info):
-        dlg = UpdateDialog(CURRENT_VERSION, info, window)
-        dlg.exec()
-
-    # QThread simple
+    receiver = _UpdateReceiver()          # vit sur le thread principal
     thread = QThread()
-    checker = _UpdateChecker()
-    checker.moveToThread(thread)
-    checker.found.connect(show_update)
-    thread.started.connect(checker.run)
-    # Quand la vérification est finie, arrêter le thread proprement.
-    checker.found.connect(thread.quit)
-    thread.finished.connect(checker.deleteLater)
+    worker = _UpdateWorker()
+    worker.moveToThread(thread)           # le worker vit sur le thread secondaire
+
+    # Connexion Queued : le slot du receiver (thread principal) est appelé
+    # sur le thread principal même si le signal part du thread secondaire.
+    worker.found.connect(receiver._on_found, _Qt.QueuedConnection)
+    thread.started.connect(worker.run)
+    worker.found.connect(thread.quit)
+    thread.finished.connect(worker.deleteLater)
     thread.start()
 
     # Garder les références pour éviter le garbage collection
     window._update_thread = thread
-    window._update_checker = checker
+    window._update_worker = worker
+    window._update_receiver = receiver
 
 
 def main():

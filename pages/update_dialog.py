@@ -15,7 +15,9 @@ class UpdateDialog(QDialog):
         self.update_info = update_info
         self.setWindowTitle("Update available")
         self.setFixedSize(420, 300)
-        self.setStyleSheet("background:#141622;")
+        # Fond opaque explicite pour éviter tout rendu en fond blanc.
+        self.setAutoFillBackground(True)
+        self.setStyleSheet("QDialog { background:#141622; }")
         self._build_ui(current_version, update_info)
 
     def _build_ui(self, current, info):
