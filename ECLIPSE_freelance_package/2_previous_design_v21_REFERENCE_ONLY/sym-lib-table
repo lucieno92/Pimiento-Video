@@ -1,4 +1,0 @@
-(sym_lib_table
-  (version 7)
-  (lib (name "eclipse")(type "KiCad")(uri "${KIPRJMOD}/easyeda2kicad.kicad_sym")(options "")(descr "Symboles officiels JLCPCB - Eclipse"))
-)
