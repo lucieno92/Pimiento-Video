@@ -1,0 +1,84 @@
+========================================================
+  GUIDE : Créer le .exe de Pimiento Video
+========================================================
+
+Ce guide t'explique comment transformer ton code en un logiciel
+que tes amis peuvent lancer sans rien installer.
+
+
+ÉTAPE 1 — Vérifier que tu as tous les fichiers
+------------------------------------------------
+Dans ton dossier TelechargeurVideo/, tu dois avoir :
+  - main.py
+  - build.bat            (nouveau)
+  - pimiento.spec        (nouveau)
+  - core/paths.py        (nouveau)
+  - assets/logo.png
+  - assets/logo.ico      (nouveau)
+  - assets/boldone.otf   (ta police)
+  - assets/sounds/done.wav
+  - tous les autres fichiers habituels
+
+
+ÉTAPE 2 — Lancer le build
+------------------------------------------------
+Double-clique simplement sur :   build.bat
+
+Une fenêtre noire s'ouvre et travaille pendant quelques minutes
+(2 à 10 min selon ton PC). Elle installe PyInstaller si besoin,
+puis emballe toute l'application.
+
+Ne ferme pas la fenêtre pendant le travail.
+
+
+ÉTAPE 3 — Récupérer ton application
+------------------------------------------------
+Quand c'est fini, tu trouveras ton logiciel dans :
+   dist\Pimiento Video\
+
+Dans ce dossier, il y a "Pimiento Video.exe" + plein de fichiers
+autour (c'est normal, ils sont nécessaires au fonctionnement).
+
+Pour tester : double-clique sur "Pimiento Video.exe".
+
+
+ÉTAPE 4 — Envoyer à tes amis (beta test)
+------------------------------------------------
+1. Clic droit sur le dossier "Pimiento Video" (dans dist\)
+2. "Envoyer vers" > "Dossier compressé" (crée un .zip)
+3. Envoie ce .zip via WeTransfer, Google Drive, etc.
+
+Tes amis :
+   - Décompressent le .zip
+   - Double-cliquent sur "Pimiento Video.exe"
+
+NOTE IMPORTANTE : Windows affichera un avertissement bleu
+"Windows a protégé votre ordinateur" (SmartScreen), parce que
+l'app n'a pas de certificat payant. C'est normal pour un petit
+logiciel. Il suffit de cliquer sur :
+   "Informations complémentaires" puis "Exécuter quand même"
+
+Préviens tes amis de ça, sinon ils croiront à un virus.
+
+
+ÉTAPE 5 — Pour une future mise à jour
+------------------------------------------------
+1. Modifie ton code
+2. Dans core/updater.py, change CURRENT_VERSION = "1.0" en "1.1"
+3. Relance build.bat
+4. Tu obtiens un nouveau .exe à distribuer
+
+
+========================================================
+  PROBLÈMES COURANTS
+========================================================
+
+"pip n'est pas reconnu" → Python n'est pas dans le PATH.
+   Réinstalle Python en cochant "Add Python to PATH".
+
+Le .exe ne se lance pas / se ferme aussitôt → lance-le depuis
+   l'invite de commande (cmd) pour voir l'erreur, et envoie-la moi.
+
+L'app est très lourde (300-500 Mo) → c'est normal, elle embarque
+   Python + toutes les librairies + FFmpeg.
+========================================================
