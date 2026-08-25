@@ -56,10 +56,10 @@ from pages.mediainfo_page import format_duration
 # une suite d'images numérotées).
 PRESETS = {
     "Editing codecs": {
-        "Apple ProRes 422 Proxy": {"ext": "mov", "vcodec": ["-c:v", "prores_ks", "-profile:v", "0"], "acodec": ["-c:a", "pcm_s16le"]},
-        "Apple ProRes 422 LT": {"ext": "mov", "vcodec": ["-c:v", "prores_ks", "-profile:v", "1"], "acodec": ["-c:a", "pcm_s16le"]},
-        "Apple ProRes 422": {"ext": "mov", "vcodec": ["-c:v", "prores_ks", "-profile:v", "2"], "acodec": ["-c:a", "pcm_s16le"]},
-        "Apple ProRes 422 HQ": {"ext": "mov", "vcodec": ["-c:v", "prores_ks", "-profile:v", "3"], "acodec": ["-c:a", "pcm_s16le"]},
+        "Apple ProRes 422 Proxy": {"ext": "mov", "vcodec": ["-c:v", "prores_aw", "-profile:v", "0"], "acodec": ["-c:a", "pcm_s16le"]},
+        "Apple ProRes 422 LT": {"ext": "mov", "vcodec": ["-c:v", "prores_aw", "-profile:v", "1"], "acodec": ["-c:a", "pcm_s16le"]},
+        "Apple ProRes 422": {"ext": "mov", "vcodec": ["-c:v", "prores_aw", "-profile:v", "2"], "acodec": ["-c:a", "pcm_s16le"]},
+        "Apple ProRes 422 HQ": {"ext": "mov", "vcodec": ["-c:v", "prores_aw", "-profile:v", "3"], "acodec": ["-c:a", "pcm_s16le"]},
         "Apple ProRes 4444": {"ext": "mov", "vcodec": ["-c:v", "prores_ks", "-profile:v", "4"], "acodec": ["-c:a", "pcm_s16le"]},
         "Apple ProRes 4444 XQ": {"ext": "mov", "vcodec": ["-c:v", "prores_ks", "-profile:v", "5"], "acodec": ["-c:a", "pcm_s16le"]},
         "DNxHD 36 (1080p, fixed)": {"ext": "mov", "vcodec": ["-c:v", "dnxhd", "-b:v", "36M"], "acodec": ["-c:a", "pcm_s16le"]},
@@ -388,6 +388,58 @@ ADVANCED_PARAMS = {
     ],
 }
 
+
+# ── Optimisation vitesse : choisir le meilleur encodeur DISPONIBLE ────────────
+# prores_aw (vs prores_ks) et libsvtav1 (vs libaom-av1) sont bien plus rapides
+# mais pas garantis dans toutes les builds FFmpeg. On detecte une fois ceux qui
+# existent et on adapte les presets, sans jamais tomber sur un encodeur absent.
+_ENCODERS_CACHE = None
+
+def _available_encoders():
+    global _ENCODERS_CACHE
+    if _ENCODERS_CACHE is not None:
+        return _ENCODERS_CACHE
+    encoders = set()
+    try:
+        exe = get_ffmpeg_executable_path(get_manual_ffmpeg_path())
+        out = subprocess.run(
+            [exe, "-hide_banner", "-encoders"],
+            capture_output=True, text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        ).stdout
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[0][:1] in ("V", "A", "S"):
+                encoders.add(parts[1])
+    except Exception:
+        pass
+    _ENCODERS_CACHE = encoders
+    return encoders
+
+
+def _optimize_presets_for_speed():
+    enc = _available_encoders()
+    if not enc:
+        return
+    def swap(preset_name, category, old, new):
+        p = PRESETS.get(category, {}).get(preset_name)
+        if not p:
+            return
+        vc = p.get("vcodec")
+        if vc and new in enc:
+            p["vcodec"] = [new if x == old else x for x in vc]
+    for name in ["Apple ProRes 422 Proxy", "Apple ProRes 422 LT",
+                 "Apple ProRes 422", "Apple ProRes 422 HQ"]:
+        swap(name, "Editing codecs", "prores_ks", "prores_aw")
+    # AV1 : libsvtav1 est bien plus rapide. Il faut remplacer tout le bloc
+    # (svtav1 n'utilise pas "-b:v 0" comme libaom).
+    p_av1 = PRESETS.get("Output codecs", {}).get("AV1 (MP4)")
+    if p_av1 and "libsvtav1" in enc:
+        p_av1["vcodec"] = ["-c:v", "libsvtav1", "-crf", "30", "-preset", "8"]
+
+
+_optimize_presets_for_speed()
+
 # Catégories où la résolution / le frame rate ne s'appliquent pas (suite).
 
 # Catégories où le conteneur de sortie peut être choisi librement.
@@ -496,6 +548,50 @@ class MultiDropZone(QFrame):
             self.files_dropped.emit(paths)
 
 
+class CollapsibleSection(QWidget):
+    """Section repliable : un bouton-titre qu'on clique pour déplier/replier
+    le contenu. Utile sur petit écran pour ne pas écraser les paramètres."""
+
+    def __init__(self, title="", collapsed=False, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QToolButton, QVBoxLayout
+        from PySide6.QtCore import Qt as _Qt
+        self._v = QVBoxLayout(self)
+        self._v.setContentsMargins(0, 0, 0, 0)
+        self._v.setSpacing(0)
+
+        self.toggle = QToolButton()
+        self.toggle.setText(title)
+        self.toggle.setCheckable(True)
+        self.toggle.setChecked(not collapsed)
+        self.toggle.setToolButtonStyle(_Qt.ToolButtonTextBesideIcon)
+        self.toggle.setArrowType(_Qt.DownArrow if not collapsed else _Qt.RightArrow)
+        self.toggle.setStyleSheet(
+            "QToolButton { border: none; font-weight: bold; padding: 6px 2px; "
+            "text-align: left; color: #e8eaf0; }"
+            "QToolButton:hover { color: #ff6b45; }")
+        self.toggle.clicked.connect(self._on_toggle)
+        self._v.addWidget(self.toggle)
+
+        self.content = QWidget()
+        self.content_layout = QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(4, 0, 4, 8)
+        self._v.addWidget(self.content)
+        self.content.setVisible(not collapsed)
+
+    def _on_toggle(self):
+        from PySide6.QtCore import Qt as _Qt
+        vis = self.toggle.isChecked()
+        self.content.setVisible(vis)
+        self.toggle.setArrowType(_Qt.DownArrow if vis else _Qt.RightArrow)
+
+    def setContentLayout(self, layout):
+        # Remplace le layout de contenu par celui fourni
+        QWidget().setLayout(self.content_layout)  # détache l'ancien
+        self.content_layout = layout
+        self.content.setLayout(layout)
+
+
 class PreviewPanel(QWidget):
     """Panneau de prévisualisation : lecture vidéo + infos (durée,
     résolution, frame rate). Reste masqué jusqu'au premier fichier ajouté."""
@@ -517,10 +613,15 @@ class PreviewPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Conteneur vidéo au ratio 16:9, compact. Hauteur modérée pour laisser
+        # le journal juste en dessous.
         self.video_widget = QVideoWidget()
-        self.video_widget.setMinimumSize(480, 320)
         self.video_widget.setStyleSheet("background-color: black;")
-        layout.addWidget(self.video_widget, stretch=1)
+        self.video_widget.setMinimumHeight(280)
+        self.video_widget.setMaximumHeight(400)
+        from PySide6.QtWidgets import QSizePolicy as _SP
+        self.video_widget.setSizePolicy(_SP.Expanding, _SP.Fixed)
+        layout.addWidget(self.video_widget)
 
         controls = QHBoxLayout()
         self.play_btn = QPushButton("▶")
@@ -695,7 +796,11 @@ class EncodeWorker(QThread):
         return bool(vcodec) and vcodec[:2] == ["-c:v", "copy"]
 
     def _build_args(self, input_path, output_path, preset):
-        args = ["-y", "-i", input_path]
+        # -threads 0 : laisse FFmpeg utiliser TOUS les cœurs CPU disponibles.
+        # Placé avant -i, il s'applique au décodage ET à l'encodage. C'est ce
+        # qui évite qu'un transcodage (ProRes, DNxHD...) tourne sur un seul
+        # cœur et prenne plusieurs fois trop de temps.
+        args = ["-y", "-threads", "0", "-i", input_path]
 
         # ── Réencapsulage (remux) : copie des flux sans transcodage ──
         # Change juste le conteneur. Instantané, sans perte de qualité.
@@ -734,6 +839,10 @@ class EncodeWorker(QThread):
             # avancés choisis par l'utilisateur (qui remplacent les défauts).
             vcodec_args = _apply_overrides(list(preset["vcodec"]), self.advanced_video)
             args += vcodec_args
+            # Forcer le multithreading de l'encodeur vidéo (parallélise
+            # l'encodage sur tous les cœurs). Essentiel pour ProRes/DNxHD.
+            if "-threads" not in vcodec_args:
+                args += ["-threads", "0"]
 
         if self.frame_rate and (apply_filters or preset.get("image_sequence")):
             args += ["-r", str(self.frame_rate)]
@@ -902,6 +1011,13 @@ class EncoderPage(QWidget):
         self._preview_shown = False
         self._build_ui()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Toujours démarrer la colonne de contrôles en haut (évite d'apparaître
+        # scrollé au milieu, avec un grand vide visuel).
+        if hasattr(self, "_left_scroll"):
+            self._left_scroll.verticalScrollBar().setValue(0)
+
     def _build_ui(self):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(24, 24, 24, 16)
@@ -920,9 +1036,21 @@ class EncoderPage(QWidget):
         self.splitter = QSplitter(Qt.Horizontal)
 
         left_widget = QWidget()
-        left_widget.setMinimumWidth(380)
+        left_widget.setMinimumWidth(360)
         layout = QVBoxLayout(left_widget)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        # Zone scrollable : TOUTE la colonne gauche (output options, avancés,
+        # rename, output folder) dans un bloc à hauteur limitée qui défile.
+        from PySide6.QtWidgets import QScrollArea
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setWidget(left_widget)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        left_scroll.setMinimumWidth(380)
+        self._left_scroll = left_scroll
 
         self.drop_zone = MultiDropZone()
         self.drop_zone.files_dropped.connect(self._add_files)
@@ -943,7 +1071,7 @@ class EncoderPage(QWidget):
 
         self.queue_list = QListWidget()
         self.queue_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.queue_list.setFixedHeight(90)
+        self.queue_list.setFixedHeight(64)
         self.queue_list.currentRowChanged.connect(self._on_queue_selection_changed)
         layout.addWidget(self.queue_list)
 
@@ -989,14 +1117,16 @@ class EncoderPage(QWidget):
         layout.addWidget(options_group)
 
         # ── Paramètres avancés (menus déroulants dynamiques selon le codec) ──
+        # Ouverts, dans le flux normal : c'est toute la colonne gauche qui
+        # défile (une seule barre pour output options + avancés + rename +
+        # output folder).
         from PySide6.QtWidgets import QGridLayout
         self.advanced_group = TGroupBox("enc_advanced")
         self.advanced_layout = QGridLayout(self.advanced_group)
         self.advanced_layout.setContentsMargins(12, 12, 12, 12)
         self.advanced_layout.setHorizontalSpacing(16)
         self.advanced_layout.setVerticalSpacing(12)
-        # Les menus avancés sont recréés à chaque changement de format.
-        self._advanced_combos = []   # liste de (param_dict, QComboBox)
+        self._advanced_combos = []
         layout.addWidget(self.advanced_group)
 
         self._on_format_changed()
@@ -1056,24 +1186,43 @@ class EncoderPage(QWidget):
         layout.addWidget(self.current_item_label)
         self.progress_bar = QProgressBar()
         layout.addWidget(self.progress_bar)
+        # Pas de stretch ici : le contenu garde sa hauteur naturelle. S'il
+        # dépasse la fenêtre, la barre de défilement de la colonne s'active
+        # (output options + avancés + rename + output folder défilent d'un bloc).
 
-        layout.addWidget(TLabel("journal"))
-        self.log_output = QTextEdit()
-        self.log_output.setReadOnly(True)
-        layout.addWidget(self.log_output)
+        # La colonne gauche (contrôles) est scrollable et s'arrête ici.
+        self.splitter.addWidget(left_scroll)
 
-        self.splitter.addWidget(left_widget)
+        # ── Colonne DROITE : visualiseur en haut, journal (logs) juste en
+        # dessous, le tout calé en haut. ──
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(8)
 
         self.preview_panel = PreviewPanel()
         self.preview_panel.setVisible(False)
-        self.splitter.addWidget(self.preview_panel)
+        right_layout.addWidget(self.preview_panel)
 
-        # Le visualiseur doit dominer l'espace (3/4) une fois affiché,
+        # Journal des logs, directement sous le visualiseur
+        right_layout.addWidget(TLabel("journal"))
+        self.log_output = QTextEdit()
+        self.log_output.setReadOnly(True)
+        self.log_output.setMinimumHeight(90)
+        self.log_output.setMaximumHeight(160)
+        right_layout.addWidget(self.log_output)
+        # Ressort : colle visualiseur + log en haut, le vide va tout en bas.
+        right_layout.addStretch(1)
+
+        self.splitter.addWidget(right_widget)
+
+        # Le visualiseur + log doivent dominer l'espace (3/4) une fois affichés,
         # les contrôles d'encodage restant compacts (1/4).
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 3)
 
-        outer.addWidget(self.splitter)
+        # Le splitter occupe TOUTE la hauteur restante (colle le contenu en haut).
+        outer.addWidget(self.splitter, 1)
 
     def _build_format_combo(self):
         """Remplit le combo unique : chaque catégorie devient un séparateur
@@ -1173,6 +1322,8 @@ class EncoderPage(QWidget):
         if not params:
             self.advanced_group.setVisible(False)
             return
+        # Il y a des paramètres : afficher la zone défilante des avancés
+        self.advanced_group.setVisible(True)
 
         from PySide6.QtWidgets import QLabel as _QLabel, QComboBox as _QComboBox
         # Disposer les menus sur DEUX colonnes pour gagner de la hauteur.
@@ -1373,23 +1524,11 @@ class EncoderPage(QWidget):
         self._sync_container_default()
 
     def _show_preview_panel(self):
+        # Affiche simplement le visualiseur. On ne redimensionne PLUS la
+        # fenêtre (ça créait des décalages/espaces noirs) : le splitter
+        # répartit l'espace disponible.
         self.preview_panel.setVisible(True)
-        if not self._preview_shown:
-            self._preview_shown = True
-            window = self.window()
-            if window is not None:
-                screen = QApplication.primaryScreen()
-                avail = screen.availableGeometry() if screen else None
-                if avail is not None:
-                    # N'agrandir que s'il reste de la place à droite, et sans
-                    # jamais dépasser l'écran. Sinon, garder la taille actuelle
-                    # (le splitter se chargera de répartir l'espace).
-                    room = avail.right() - window.frameGeometry().right()
-                    grow = max(0, min(320, room))
-                    if grow > 0:
-                        window.resize(window.width() + grow, window.height())
-        total = max(self.splitter.width(), 1000)
-        self.splitter.setSizes([int(total * 0.52), int(total * 0.48)])
+        self._preview_shown = True
 
     def _on_queue_selection_changed(self, row):
         if 0 <= row < len(self.queued_files):
