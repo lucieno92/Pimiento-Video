@@ -18,7 +18,7 @@ import urllib.request
 
 # ── Version actuelle de CE build ──────────────────────────────────────────────
 # ⚠ Incrémente ce numéro à chaque nouvelle version que tu distribues.
-CURRENT_VERSION = "1.2"
+CURRENT_VERSION = "1.3"
 
 # ── URL du fichier version.json en ligne ──────────────────────────────────────
 # ⚠ Remplace par l'URL réelle où tu héberges version.json
