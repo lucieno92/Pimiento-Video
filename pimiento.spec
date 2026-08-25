@@ -10,7 +10,7 @@ block_cipher = None
 # ont besoin de leurs données pour fonctionner dans l'exécutable packagé.
 from PyInstaller.utils.hooks import collect_all
 _extra_datas, _extra_binaries, _extra_hidden = [], [], []
-for _pkg in ['torchaudio']:
+for _pkg in ['torchaudio', 'demucs']:
     try:
         _d, _b, _h = collect_all(_pkg)
         _extra_datas += _d

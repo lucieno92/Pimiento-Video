@@ -95,8 +95,8 @@ app = BUNDLE(
     info_plist={
         'CFBundleName': 'Pimiento Video',
         'CFBundleDisplayName': 'Pimiento Video',
-        'CFBundleShortVersionString': '1.2',
-        'CFBundleVersion': '1.2',
+        'CFBundleShortVersionString': '1.3',
+        'CFBundleVersion': '1.3',
         'NSHighResolutionCapable': True,
         'NSMicrophoneUsageDescription':
             'Pimiento Video needs microphone access for voice recording features.',

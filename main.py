@@ -285,11 +285,8 @@ class Sidebar(QWidget):
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(0)
 
-        # En-tête sidebar — vide et épuré (le logo est dans le header de droite)
-        logo_area = QWidget()
-        logo_area.setFixedHeight(24)
-        logo_area.setStyleSheet("background:#0a0c14;")
-        self._layout.addWidget(logo_area)
+        # (En-tête vide supprimé : il créait un carré noir au-dessus de Home.)
+        self._layout.addSpacing(8)
 
         # Home button
         self._home_btn = QPushButton("  🏠  Home")
